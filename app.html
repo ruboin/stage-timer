@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stage Timer Settings</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+            position: relative;
+        }
+        .tooltip {
+            visibility: hidden;
+            width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: left;
+            border-radius: 5px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        label:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        input {
+            width: calc(94%);
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        button {
+            width: calc(48%);
+            padding: 10px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            background-color: #555;
+            color: #fff;
+        }
+        button:disabled {
+            background-color: #f2f2f2;
+            color: #a9a9a9;
+            cursor: not-allowed;
+        }
+        #initiateButton {
+            width: 100%;
+            background-color: #555;
+        }
+        #initiateButton:hover:enabled {
+            background-color: #333;
+        }
+        #startButton {
+            background-color: #555;
+        }
+        #startButton:hover:enabled {
+            background-color: #333;
+        }
+        #resetButton {
+            background-color: #555;
+        }
+        #resetButton:hover:enabled {
+            background-color: #333;
+        }
+        #closeButton {
+            width: 100%;
+            background-color: #555;
+        }
+        #closeButton:hover:enabled {
+            background-color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stage Timer Settings</h1>
+        <label for="generalTime">Time (MM:SS):
+            <span class="tooltip">Set the overall time for the timer.</span>
+        </label>
+        <input type="text" id="generalTime" placeholder="MM:SS" style="border: 2px solid darkgrey;" maxlength="5" value="10:00">
+        
+        <label for="warningTime1" style="color: orange;">Warning 1 (MM:SS) before time is up:
+            <span class="tooltip">Timer turns orange. Set the time counting from the end; e.g., "02:00" will activate the warning two minutes before the timer ends.</span>
+        </label>
+        <input type="text" id="warningTime1" placeholder="MM:SS" style="border: 2px solid orange;" maxlength="5" value="02:00">
+        
+        <label for="warningTime2" style="color: red;">Warning 2 (MM:SS) before time is up:
+            <span class="tooltip">Timer turns red. Set the time counting from the end; e.g., "01:00" will activate the warning one minute before the timer ends.</span>
+        </label>
+        <input type="text" id="warningTime2" placeholder="MM:SS" style="border: 2px solid red;" maxlength="5" value="01:00">
+        
+        <button id="initiateButton">↗️ Initiate</button>
+        <div class="button-container">
+            <button id="startButton" disabled>▶️ Start</button>
+            <button id="resetButton" disabled>🔄 Reset</button>
+        </div>
+        <button id="closeButton" disabled>❌ Close Timer</button>
+    </div>
+
+    <script>
+        let timerWindow;
+        let timerInterval;
+        let timerPaused = true;
+        let timerTime;
+        let generalTime;
+        let warningTime1;
+        let warningTime2;
+        let overtimeInterval;
+        let overtimeSeconds = 1;
+
+        document.getElementById('initiateButton').addEventListener('click', function () {
+            generalTime = parseTime(document.getElementById('generalTime').value);
+            warningTime1 = parseTime(document.getElementById('warningTime1').value);
+            warningTime2 = parseTime(document.getElementById('warningTime2').value);
+
+            if (isNaN(generalTime) || isNaN(warningTime1) || isNaN(warningTime2) || generalTime <= 0) {
+                alert('Please input a time into all time fields (in the format MM:SS).');
+                return;
+            }
+
+            timerTime = generalTime;
+
+            if (timerWindow && !timerWindow.closed) {
+                timerWindow.close();
+            }
+
+            timerWindow = window.open('', 'Timer', 'width=400,height=300');
+            timerWindow.document.write(`
+                <html>
+                <head>
+                    <title>Stage Timer</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            display: flex;
+                            flex-direction: column;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100%;
+                            margin: 0;
+                        }
+                        #timer {
+                            font-size: 30vw;
+                            color: darkgrey;
+                            transition: color 1s ease;
+                        }
+                        #timesUp {
+                            font-size: 5vw;
+                            color: darkgrey;
+                            visibility: hidden;
+                        }
+                        #overtime {
+                            font-size: 2vw;
+                            color: grey;
+                            visibility: hidden;
+                        }
+                        #progressBarContainer {
+                            position: fixed;
+                            bottom: 0;
+                            width: 100%;
+                            height: 3vh;
+                            background-color: lightgrey;
+                        }
+                        #progressBar {
+                            width: 0;
+                            height: 100%;
+                            background-color: darkgrey;
+                            transition: width 1s linear, background-color 1s ease;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div id="timer">${formatTime(timerTime)}</div>
+                    <div id="timesUp">Time's up!</div>
+                    <div id="overtime">Overtime: 00:01</div>
+                    <div id="progressBarContainer">
+                        <div id="progressBar"></div>
+                    </div>
+                </body>
+                </html>
+            `);
+            document.getElementById('startButton').disabled = false;
+            document.getElementById('closeButton').disabled = false;
+            document.getElementById('resetButton').disabled = true;
+        });
+
+        document.getElementById('startButton').addEventListener('click', function () {
+            if (timerPaused) {
+                startTimer();
+                timerPaused = false;
+                document.getElementById('startButton').textContent = '⏸ Pause';
+                document.getElementById('resetButton').disabled = false;
+            } else {
+                clearInterval(timerInterval);
+                clearInterval(overtimeInterval);
+                timerPaused = true;
+                document.getElementById('startButton').textContent = '▶️ Start';
+            }
+        });
+
+        document.getElementById('resetButton').addEventListener('click', function () {
+            clearInterval(timerInterval);
+            clearInterval(overtimeInterval);
+            timerTime = generalTime;
+            overtimeSeconds = 0;
+            updateTimerWindow();
+            timerPaused = true;
+            document.getElementById('startButton').textContent = '▶️ Start';
+
+            if (timerWindow && !timerWindow.closed) {
+                const timesUpElement = timerWindow.document.getElementById('timesUp');
+                const overtimeElement = timerWindow.document.getElementById('overtime');
+                timesUpElement.style.visibility = 'hidden';
+                overtimeElement.style.visibility = 'hidden';
+                overtimeElement.textContent = 'Overtime: 00:01';
+            }
+        });
+
+        document.getElementById('closeButton').addEventListener('click', function () {
+            if (timerWindow && !timerWindow.closed) {
+                timerWindow.close();
+                document.getElementById('closeButton').disabled = true;
+                document.getElementById('startButton').disabled = true;
+                document.getElementById('resetButton').disabled = true;
+            }
+        });
+
+        function startTimer() {
+            timerInterval = setInterval(function () {
+                if (timerTime > 0) {
+                    timerTime--;
+                    updateTimerWindow();
+                } else {
+                    clearInterval(timerInterval);
+                    startOvertime();
+                }
+            }, 1000);
+        }
+
+        function startOvertime() {
+            if (timerWindow && !timerWindow.closed) {
+                const timesUpElement = timerWindow.document.getElementById('timesUp');
+                const overtimeElement = timerWindow.document.getElementById('overtime');
+                timesUpElement.style.visibility = 'visible';
+                overtimeElement.style.visibility = 'visible';
+
+                overtimeInterval = setInterval(function () {
+                    overtimeSeconds++;
+                    overtimeElement.textContent = `Overtime: ${formatTime(overtimeSeconds)}`;
+                }, 1000);
+            }
+        }
+
+        function updateTimerWindow() {
+            if (timerWindow && !timerWindow.closed) {
+                const timerElement = timerWindow.document.getElementById('timer');
+                const progressBar = timerWindow.document.getElementById('progressBar');
+                const progressPercentage = ((generalTime - timerTime) / generalTime) * 100;
+                timerElement.textContent = formatTime(timerTime);
+                progressBar.style.width = `${progressPercentage}%`;
+
+                if (timerTime <= warningTime2) {
+                    timerElement.style.color = 'red';
+                    progressBar.style.backgroundColor = 'red';
+                } else if (timerTime <= warningTime1) {
+                    timerElement.style.color = 'orange';
+                    progressBar.style.backgroundColor = 'orange';
+                } else {
+                    timerElement.style.color = 'darkgrey';
+                    progressBar.style.backgroundColor = 'darkgrey';
+                }
+            }
+        }
+
+        function parseTime(timeString) {
+            const parts = timeString.split(':');
+            if (parts.length !== 2) {
+                return NaN;
+            }
+            const mins = parseInt(parts[0], 10);
+            const secs = parseInt(parts[1], 10);
+            if (isNaN(mins) || isNaN(secs) || secs < 0 || secs >= 60) {
+                return NaN;
+            }
+            return mins * 60 + secs;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+    </script>
+</body>
+</html>
